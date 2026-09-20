@@ -1,0 +1,188 @@
+-- 6x3 Tunnel-Graber mit Junk-Filter
+-- Turtle gräbt 6 breit, 3 hoch, wirft Cobblestone/Dirt/Gravel etc. weg
+
+-- ===== Konfiguration =====
+local TUNNEL_WIDTH  = 6      -- Breite
+local TUNNEL_HEIGHT = 3      -- Höhe
+local TUNNEL_LENGTH = 64     -- Länge in Blöcken (anpassbar)
+local FUEL_RESERVE  = 100    -- Mindest-Sprit bevor Warnung
+
+-- Blöcke, die weggeworfen werden sollen:
+local junk = {
+  ["minecraft:cobblestone"]       = true,
+  ["minecraft:dirt"]              = true,
+  ["minecraft:gravel"]            = true,
+  ["minecraft:sand"]              = true,
+  ["minecraft:stone"]             = true,
+  ["minecraft:granite"]           = true,
+  ["minecraft:diorite"]           = true,
+  ["minecraft:andesite"]          = true,
+  ["minecraft:cobbled_deepslate"] = true,
+  ["minecraft:deepslate"]         = true,
+  ["minecraft:tuff"]              = true,
+  ["minecraft:netherrack"]        = true,
+  ["minecraft:dripstone_block"]   = true,
+}
+
+-- ===== Hilfsfunktionen =====
+
+-- Sprit prüfen und ggf. aus dem Inventar nachtanken
+local function checkFuel()
+  if turtle.getFuelLevel() == "unlimited" then return true end
+  if turtle.getFuelLevel() < FUEL_RESERVE then
+    for slot = 1, 16 do
+      turtle.select(slot)
+      if turtle.refuel(1) then
+        print("Nachgetankt aus Slot " .. slot)
+        break
+      end
+    end
+  end
+  if turtle.getFuelLevel() < 1 then
+    print("KEIN SPRIT! Bitte Kohle/Lava ins Inventar legen.")
+    return false
+  end
+  return true
+end
+
+-- Junk wegwerfen, Rest behalten
+local function dropJunk()
+  for slot = 1, 16 do
+    local item = turtle.getItemDetail(slot)
+    if item and junk[item.name] then
+      turtle.select(slot)
+      turtle.drop()   -- wirft nach vorne aus
+    end
+  end
+  turtle.select(1)
+end
+
+-- Inventar voll? (kein freier Slot mehr)
+local function inventoryFull()
+  for slot = 1, 16 do
+    if turtle.getItemCount(slot) == 0 then
+      return false
+    end
+  end
+  return true
+end
+
+-- Graben mit Wiederholung (falls Kies/Sand nachrutscht)
+local function digForward()
+  while turtle.detect() do
+    turtle.dig()
+    sleep(0.4)  -- Zeit, damit nachfallender Kies wieder erfasst wird
+  end
+end
+
+local function digUp()
+  while turtle.detectUp() do
+    turtle.digUp()
+    sleep(0.4)
+  end
+end
+
+local function digDown()
+  if turtle.detectDown() then
+    turtle.digDown()
+  end
+end
+
+-- sicheres Vorwärtsbewegen
+local function forward()
+  while not turtle.forward() do
+    turtle.dig()
+    sleep(0.2)
+  end
+end
+
+-- Eine vertikale Scheibe (Höhe) an der aktuellen Spalte graben
+-- Turtle steht unten, gräbt sich hoch und wieder runter
+local function digColumn()
+  digForward()
+  -- nach oben arbeiten
+  for h = 1, TUNNEL_HEIGHT - 1 do
+    digUp()
+    forward_up()
+    digForward()
+  end
+  -- wieder nach unten
+  for h = 1, TUNNEL_HEIGHT - 1 do
+    down()
+  end
+end
+
+-- Hilfsbewegungen hoch/runter mit Graben
+function forward_up()
+  while not turtle.up() do
+    turtle.digUp()
+    sleep(0.2)
+  end
+end
+
+function down()
+  while not turtle.down() do
+    turtle.digDown()
+    sleep(0.2)
+  end
+end
+
+-- ===== Hauptprogramm =====
+
+print("Starte 6x3 Tunnel, Laenge " .. TUNNEL_LENGTH)
+print("Sprit: " .. tostring(turtle.getFuelLevel()))
+
+for length = 1, TUNNEL_LENGTH do
+
+  if not checkFuel() then
+    print("Abbruch: kein Sprit.")
+    break
+  end
+
+  -- Eine komplette 6-breite, 3-hohe Scheibe graben
+  for w = 1, TUNNEL_WIDTH do
+    digColumn()
+
+    -- zur naechsten Spalte seitlich versetzen (ausser bei letzter)
+    if w < TUNNEL_WIDTH then
+      if w % 2 == 1 then
+        turtle.turnRight()
+        forward()
+        turtle.turnLeft()
+      else
+        turtle.turnLeft()
+        forward()
+        turtle.turnRight()
+      end
+    end
+  end
+
+  -- zurueck zur Startspalte der Scheibe versetzen
+  -- (abhaengig davon, auf welcher Seite wir gelandet sind)
+  if TUNNEL_WIDTH % 2 == 0 then
+    turtle.turnLeft()
+    for i = 1, TUNNEL_WIDTH - 1 do forward() end
+    turtle.turnRight()
+  end
+
+  -- Junk wegwerfen
+  dropJunk()
+
+  -- Warnung wenn voll trotz Filter
+  if inventoryFull() then
+    print("Inventar voll (nur wertvolle Items?) - Pause.")
+    dropJunk()
+    if inventoryFull() then
+      print("Wirklich voll. Bitte leeren, weiter mit Enter.")
+      read()
+    end
+  end
+
+  -- eine Scheibe vorruecken
+  forward()
+
+  print("Scheibe " .. length .. "/" .. TUNNEL_LENGTH .. " fertig.")
+end
+
+print("Tunnel fertig!")
+turtle.select(1)
