@@ -27,6 +27,7 @@ local junk = {
   ["minecraft:tuff"]              = true,
   ["minecraft:netherrack"]        = true,
   ["minecraft:dripstone_block"]   = true,
+  ["create:veridium"]             = true,
 }
 
 print("-Information-")
