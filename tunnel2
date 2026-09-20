@@ -28,7 +28,8 @@ local junk = {
   ["minecraft:netherrack"]        = true,
   ["minecraft:dripstone_block"]   = true,
   ["create:veridium"]             = true,
-  ["mincraft:smooth_basalt"]             = true,
+  ["minecraft:smooth_basalt"]     = true,
+  ["minecraft:raw_copper"]        = true,
 }
 
 print("-Information-")
@@ -75,11 +76,9 @@ end
 
 local collected = 0
 
+-- zaehlt nur noch mit, keine Zwischenmeldung mehr
 local function collect()
     collected = collected + 1
-    if math.fmod(collected, 25) == 0 then
-        print("Mined " .. collected .. " items.")
-    end
 end
 
 -- ===== Junk wegwerfen (Slot 1+2 geschuetzt) =====
@@ -230,7 +229,6 @@ end
 -- Turtle steht unten-links der Scheibe und schaut in Grabrichtung.
 -- Nach dem Graben steht sie wieder unten-links, gleiche Blickrichtung.
 local function digSlice()
-    -- aktuelle Startspalte: den Block vor der Turtle raeumen erfolgt beim Vorruecken.
     -- Wir graben die Scheibe als Spalten seitlich nach rechts, jede Spalte in voller Hoehe.
     local goingUp = true
     for w = 1, WIDTH do
@@ -312,6 +310,12 @@ for n = 1, length do
     torchPlaceUpgraded()
     torchdist = torchdist + 1
     traveledBlocks = traveledBlocks + 1
+
+    -- alle 5 Bloecke Tiefe melden
+    if math.fmod(traveledBlocks, 5) == 0 then
+        print("Im Tunnel - Tiefe: " .. traveledBlocks .. " Bloecke")
+    end
+
     invcheck()
 
     if n < length then
