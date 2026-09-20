@@ -28,6 +28,7 @@ local junk = {
   ["minecraft:netherrack"]        = true,
   ["minecraft:dripstone_block"]   = true,
   ["create:veridium"]             = true,
+  ["mincraft:smooth_basalt"]             = true,
 }
 
 print("-Information-")
@@ -202,13 +203,24 @@ torch_error = 0
 local function torchPlaceUpgraded()
     if torchdist > 8 then
         turtle.select(2)
-        turtle.place()
-        if turtle.detect() == false then
-            torch_error = torch_error + 1
+        -- erst pruefen ob unten Platz ist, sonst kann nicht platziert werden
+        if not turtle.detectDown() then
+            if turtle.placeDown() then
+                print("Placing torch...")
+                torchtotal = torchtotal + 1
+                torchdist = 0
+            else
+                torch_error = torch_error + 1
+            end
         else
-            print("Placing torch...")
-            torchtotal = torchtotal + 1
-            torchdist = 0
+            -- Boden belegt: nach vorn versuchen (an die Stirnwand)
+            if turtle.place() then
+                print("Placing torch...")
+                torchtotal = torchtotal + 1
+                torchdist = 0
+            else
+                torch_error = torch_error + 1
+            end
         end
         turtle.select(1)
     end
