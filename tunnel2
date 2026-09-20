@@ -1,0 +1,341 @@
+-- Aufruf:  forkTunnel <length> <skiptoo> [width] [height]
+--   length  = Tunnellaenge in Bloecken
+--   skiptoo = Bloecke am Anfang ueberspringen (bestehenden Tunnel durchfahren)
+--   width   = Breite (optional, Standard 3)
+--   height  = Hoehe  (optional, Standard 3)
+--
+-- Slot 1: Brennstoff (Kohle)
+-- Slot 2: Fackeln
+-- Slots 3-16: Ausbeute; Junk daraus wird weggeworfen
+
+term.clear()
+beforeFuel = turtle.getFuelLevel()
+computerLabel = os.getComputerLabel()
+
+-- ===== Junk-Filter: was weggeworfen wird =====
+local junk = {
+  ["minecraft:cobblestone"]       = true,
+  ["minecraft:dirt"]              = true,
+  ["minecraft:gravel"]            = true,
+  ["minecraft:sand"]              = true,
+  ["minecraft:stone"]             = true,
+  ["minecraft:granite"]           = true,
+  ["minecraft:diorite"]           = true,
+  ["minecraft:andesite"]          = true,
+  ["minecraft:cobbled_deepslate"] = true,
+  ["minecraft:deepslate"]         = true,
+  ["minecraft:tuff"]              = true,
+  ["minecraft:netherrack"]        = true,
+  ["minecraft:dripstone_block"]   = true,
+}
+
+print("-Information-")
+print("forkTunnel (erweitert) - Basis by Xanthus58")
+print("")
+print("-Instructions-")
+print("Slot 1: Brennstoff")
+print("Slot 2: Fackeln")
+print("Slots 3-16: Ausbeute (Junk wird geworfen)")
+os.setComputerLabel("Waiting...")
+print("\nPress any key once ready...")
+os.pullEvent("key")
+term.clear()
+print("-Status-")
+
+traveledBlocks = 0
+totalTraveld = 0
+if not turtle then
+    printError("Requires a Turtle")
+    return
+end
+
+local tArgs = { ... }
+
+if #tArgs < 2 then
+    local programName = arg[0] or fs.getName(shell.getRunningProgram())
+    print("Usage: " .. programName .. " <length> <skiptoo> [width] [height]")
+    return
+end
+
+local length  = tonumber(tArgs[1])
+local skiptoo = tonumber(tArgs[2])
+local WIDTH   = tonumber(tArgs[3]) or 3
+local HEIGHT  = tonumber(tArgs[4]) or 3
+
+if length < 0 then
+    print("Tunnel length must be positive")
+    return
+end
+if WIDTH < 1 or HEIGHT < 1 then
+    print("Width und Height muessen >= 1 sein")
+    return
+end
+
+local collected = 0
+
+local function collect()
+    collected = collected + 1
+    if math.fmod(collected, 25) == 0 then
+        print("Mined " .. collected .. " items.")
+    end
+end
+
+-- ===== Junk wegwerfen (Slot 1+2 geschuetzt) =====
+local function dropJunk()
+    for n = 3, 16 do
+        local item = turtle.getItemDetail(n)
+        if item and junk[item.name] then
+            turtle.select(n)
+            turtle.dropDown()   -- nach unten werfen, blockiert die Fahrt nicht
+        end
+    end
+    turtle.select(1)
+end
+
+local function tryDig()
+    while turtle.detect() do
+        if turtle.dig() then
+            collect()
+            sleep(0.5)
+        else
+            return false
+        end
+    end
+    return true
+end
+
+local function tryDigUp()
+    while turtle.detectUp() do
+        if turtle.digUp() then
+            collect()
+            sleep(0.5)
+        else
+            return false
+        end
+    end
+    return true
+end
+
+local function tryDigDown()
+    while turtle.detectDown() do
+        if turtle.digDown() then
+            collect()
+            sleep(0.5)
+        else
+            return false
+        end
+    end
+    return true
+end
+
+local function refuel()
+    local fuelLevel = turtle.getFuelLevel()
+    if fuelLevel == "unlimited" or fuelLevel > 0 then
+        return
+    end
+    local function tryRefuel()
+        for n = 1, 16 do
+            if turtle.getItemCount(n) > 0 then
+                turtle.select(n)
+                if turtle.refuel(1) then
+                    turtle.select(1)
+                    return true
+                end
+            end
+        end
+        turtle.select(1)
+        return false
+    end
+    if not tryRefuel() then
+        print("Add more fuel to continue.")
+        while not tryRefuel() do
+            os.pullEvent("turtle_inventory")
+        end
+        print("Resuming Tunnel.")
+    end
+end
+
+local function tryUp()
+    refuel()
+    while not turtle.up() do
+        if turtle.detectUp() then
+            if not tryDigUp() then return false end
+        elseif turtle.attackUp() then
+            collect()
+        else
+            sleep(0.5)
+        end
+    end
+    return true
+end
+
+local function tryDown()
+    refuel()
+    while not turtle.down() do
+        if turtle.detectDown() then
+            if not tryDigDown() then return false end
+        elseif turtle.attackDown() then
+            collect()
+        else
+            sleep(0.5)
+        end
+    end
+    return true
+end
+
+local function tryForward()
+    refuel()
+    while not turtle.forward() do
+        if turtle.detect() then
+            if not tryDig() then return false end
+        elseif turtle.attack() then
+            collect()
+        else
+            sleep(0.5)
+        end
+    end
+    return true
+end
+
+torch_error = 0
+local function torchPlaceUpgraded()
+    if torchdist > 8 then
+        turtle.select(2)
+        turtle.place()
+        if turtle.detect() == false then
+            torch_error = torch_error + 1
+        else
+            print("Placing torch...")
+            torchtotal = torchtotal + 1
+            torchdist = 0
+        end
+        turtle.select(1)
+    end
+end
+
+-- ===== Eine komplette Scheibe (WIDTH x HEIGHT) graben =====
+-- Turtle steht unten-links der Scheibe und schaut in Grabrichtung.
+-- Nach dem Graben steht sie wieder unten-links, gleiche Blickrichtung.
+local function digSlice()
+    -- aktuelle Startspalte: den Block vor der Turtle raeumen erfolgt beim Vorruecken.
+    -- Wir graben die Scheibe als Spalten seitlich nach rechts, jede Spalte in voller Hoehe.
+    local goingUp = true
+    for w = 1, WIDTH do
+        -- vertikale Spalte graben
+        for h = 1, HEIGHT - 1 do
+            if goingUp then
+                tryDigUp(); tryUp()
+            else
+                tryDigDown(); tryDown()
+            end
+        end
+        goingUp = not goingUp  -- Zickzack: naechste Spalte in Gegenrichtung
+
+        -- zur naechsten Spalte nach rechts versetzen (ausser letzte)
+        if w < WIDTH then
+            turtle.turnRight()
+            tryDig(); tryForward()
+            turtle.turnLeft()
+        end
+    end
+
+    -- Nach der Scheibe: zurueck nach links und (falls oben geendet) nach unten.
+    -- Zuruecksetzen auf Spalte 1:
+    turtle.turnLeft()
+    for i = 1, WIDTH - 1 do
+        tryForward()
+    end
+    turtle.turnRight()
+
+    -- Hoehe zuruecksetzen: wenn WIDTH ungerade endeten wir oben, sonst unten.
+    if (WIDTH % 2 == 1) then
+        for h = 1, HEIGHT - 1 do
+            tryDown()
+        end
+    end
+end
+
+torchdist = 7
+torchtotal = 0
+
+-- ===== Skip-Phase =====
+if skiptoo > 0 then
+    print("Skipping " .. skiptoo .. " blocks...")
+    os.setComputerLabel("Skipping...")
+end
+while skiptoo > 0 do
+    refuel()
+    tryDig()
+    tryForward()
+    skiptoo = skiptoo - 1
+    totalTraveld = totalTraveld + 1
+    traveledBlocks = traveledBlocks + 1
+end
+
+-- ===== Inventarpruefung: erst Junk werfen, dann ggf. heim =====
+local function invcheck()
+    dropJunk()
+    local fullDetect = true
+    for n = 3, 16 do
+        if turtle.getItemCount(n) == 0 then
+            fullDetect = false
+        end
+    end
+    if fullDetect then
+        print("Inventar voll (nur wertvolle Items). Pause.")
+        print("Leeren, dann Taste druecken.")
+        os.setComputerLabel("Inventory Full...")
+        os.pullEvent("key")
+    end
+end
+
+-- ===== Hauptschleife =====
+print("Mining " .. WIDTH .. "x" .. HEIGHT .. " Tunnel, Laenge " .. length)
+os.setComputerLabel("Mining...")
+
+for n = 1, length do
+    refuel()
+    digSlice()
+    torchPlaceUpgraded()
+    torchdist = torchdist + 1
+    traveledBlocks = traveledBlocks + 1
+    invcheck()
+
+    if n < length then
+        if not tryForward() then
+            print("Aborting Tunnel.")
+            break
+        end
+        totalTraveld = totalTraveld + 1
+    else
+        print("Tunnel complete.")
+    end
+end
+
+-- ===== Rueckkehr =====
+os.setComputerLabel("Returning...")
+print("Returning to dock...")
+turtle.turnLeft(); turtle.turnLeft()
+local return_dist = traveledBlocks
+while return_dist > 0 do
+    refuel()
+    tryForward()
+    return_dist = return_dist - 1
+    totalTraveld = totalTraveld + 1
+end
+turtle.turnRight(); turtle.turnRight()
+
+os.setComputerLabel(computerLabel)
+term.clear()
+
+afterFuel = turtle.getFuelLevel()
+coalFuel = beforeFuel - afterFuel
+coalUse = coalFuel / 80
+
+print("-Logs-")
+print(collected .. " mined items.")
+print(torch_error .. " torches failed to place.")
+print(torchtotal .. " torches placed.")
+print(coalFuel .. " fuel used (" .. coalUse .. " coal).")
+print(totalTraveld .. " blocks traveled.")
+print("Tunnel " .. traveledBlocks .. " blocks deep, " .. WIDTH .. "x" .. HEIGHT .. " profile.")
